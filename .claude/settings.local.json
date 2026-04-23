@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check /Users/andet/Desktop/Development/playground/game/pflanzio/app.js)",
+      "Bash(node --check /Users/andet/Desktop/Development/playground/game/pflanzio/data.js)",
+      "Bash(zip -r ../pflanzio.zip index.html style.css app.js data.js manifest.json sw.js)"
+    ]
+  }
+}
