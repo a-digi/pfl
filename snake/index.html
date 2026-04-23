@@ -590,6 +590,7 @@ document.addEventListener('keydown',e=>{
 let swipeTouchId=null,swipeX=0,swipeY=0;
 
 canvas.addEventListener('touchstart',e=>{
+  if(mobileMode)return;
   if(swipeTouchId!==null)return;
   const t=e.changedTouches[0];
   swipeTouchId=t.identifier;swipeX=t.clientX;swipeY=t.clientY;
@@ -598,11 +599,12 @@ canvas.addEventListener('touchstart',e=>{
 },{passive:false});
 
 canvas.addEventListener('touchend',e=>{
+  if(mobileMode)return;
   for(const t of e.changedTouches){
     if(t.identifier!==swipeTouchId)continue;
     swipeTouchId=null;
     const dx=t.clientX-swipeX,dy=t.clientY-swipeY;
-    if(Math.max(Math.abs(dx),Math.abs(dy))<18)return;
+    if(Math.max(Math.abs(dx),Math.abs(dy))<40)return;
     if(Math.abs(dx)>Math.abs(dy))applyDir(dx>0?1:-1,0);
     else                          applyDir(0,dy>0?1:-1);
   }
@@ -618,13 +620,14 @@ let joyId=null, joyCX=0, joyCY=0;
 
 joyBase.addEventListener('touchstart',e=>{
   e.preventDefault();
+  e.stopPropagation();
   if(joyId!==null)return;
   const t=e.changedTouches[0];
   joyId=t.identifier;
   const r=joyBase.getBoundingClientRect();
   joyCX=r.left+r.width/2; joyCY=r.top+r.height/2;
-  moveThumb(t.clientX,t.clientY);
   if(!running)start();
+  moveThumb(t.clientX,t.clientY);
 },{passive:false});
 
 document.addEventListener('touchmove',e=>{
@@ -659,7 +662,7 @@ function moveThumb(cx,cy){
   const dist=Math.hypot(dx,dy);
   if(dist>JOY_R){dx=dx/dist*JOY_R;dy=dy/dist*JOY_R;}
   joyThumb.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
-  if(dist>JOY_DEAD){
+  if(running&&dist>JOY_DEAD){
     if(Math.abs(dx)>Math.abs(dy)) applyDir(dx>0?1:-1,0);
     else                           applyDir(0,dy>0?1:-1);
   }
