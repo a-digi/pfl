@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SNAKE</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0f;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      letter-spacing: 0.4em;
+      color: #0ff;
+      text-shadow: 0 0 10px #0ff, 0 0 30px #0ff;
+    }
+
+    #canvas {
+      display: block;
+      image-rendering: pixelated;
+      border: 2px solid #0ff;
+      box-shadow: 0 0 20px #0ff, 0 0 60px #0ff4;
+    }
+
+    #hud {
+      display: flex;
+      gap: 32px;
+      font-size: 1rem;
+      letter-spacing: 0.15em;
+    }
+
+    #hud span { color: #0ff; text-shadow: 0 0 8px #0ff; }
+    #hud label { color: #888; }
+
+    #controls {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .ctrl {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      color: #aaa;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .ctrl input[type=range] {
+      -webkit-appearance: none;
+      width: 150px;
+      height: 4px;
+      background: #1a1a2e;
+      border-radius: 2px;
+      outline: none;
+    }
+    .ctrl input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: #0ff;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #0ff;
+      cursor: pointer;
+    }
+
+    .ctrl input[type=color] {
+      -webkit-appearance: none;
+      width: 40px;
+      height: 24px;
+      border: 1px solid #333;
+      background: none;
+      cursor: pointer;
+      padding: 0;
+    }
+    .ctrl input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+    .ctrl input[type=color]::-webkit-color-swatch { border: none; }
+
+    #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      pointer-events: none;
+      background: rgba(10,10,15,0.55);
+    }
+
+    #msg {
+      font-size: 1.8rem;
+      letter-spacing: 0.3em;
+      color: #f0f;
+      text-shadow: 0 0 12px #f0f, 0 0 40px #f0f;
+    }
+
+    #sub {
+      font-size: 0.8rem;
+      color: #888;
+      letter-spacing: 0.2em;
+    }
+
+    #wrap {
+      position: relative;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h1>SNAKE</h1>
+
+  <div id="hud">
+    <div><label>SCORE </label><span id="scoreEl">0</span></div>
+    <div><label>HIGH </label><span id="highEl">0</span></div>
+    <div><label>LEN </label><span id="lenEl">0</span></div>
+  </div>
+
+  <div id="wrap">
+    <canvas id="canvas"></canvas>
+    <div id="overlay">
+      <div id="msg">PRESS SPACE</div>
+      <div id="sub">WASD / PFEILTASTEN</div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div class="ctrl">
+      <label>GESCHWINDIGKEIT</label>
+      <input type="range" id="speedCtrl" min="1" max="20" value="8">
+      <span id="speedVal">8</span>
+    </div>
+    <div class="ctrl">
+      <label>SCHLANGE</label>
+      <input type="color" id="snakeColor" value="#00ffff">
+    </div>
+    <div class="ctrl">
+      <label>FRUCHT</label>
+      <input type="color" id="fruitColor" value="#ff00ff">
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const COLS   = 30;
+    const ROWS   = 30;
+    const CELL   = 20;
+
+    canvas.width  = COLS * CELL;
+    canvas.height = ROWS * CELL;
+
+    // --- settings ---
+    let snakeHex = '#00ffff';
+    let fruitHex = '#ff00ff';
+    let speed    = 8;
+
+    document.getElementById('snakeColor').addEventListener('input', e => { snakeHex = e.target.value; });
+    document.getElementById('fruitColor').addEventListener('input', e => { fruitHex = e.target.value; });
+    document.getElementById('speedCtrl').addEventListener('input', e => {
+      speed = +e.target.value;
+      document.getElementById('speedVal').textContent = speed;
+      if (running) { clearInterval(loop); loop = setInterval(tick, 1000 / speed); }
+    });
+
+    // --- state ---
+    let snake, dir, nextDir, fruit, score, highScore = 0, running = false, dead = false;
+    let loop;
+
+    function hexToRgb(hex) {
+      const r = parseInt(hex.slice(1,3),16);
+      const g = parseInt(hex.slice(3,5),16);
+      const b = parseInt(hex.slice(5,7),16);
+      return `${r},${g},${b}`;
+    }
+
+    function init() {
+      const startX = Math.floor(COLS / 2);
+      const startY = Math.floor(ROWS / 2);
+      snake = [];
+      for (let i = 0; i <= 10; i++) snake.push({ x: startX - i, y: startY });
+      dir     = { x: 1, y: 0 };
+      nextDir = { x: 1, y: 0 };
+      score   = 0;
+      dead    = false;
+      spawnFruit();
+      updateHud();
+    }
+
+    function spawnFruit() {
+      const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
+      let f;
+      do { f = { x: Math.floor(Math.random()*COLS), y: Math.floor(Math.random()*ROWS) }; }
+      while (occupied.has(`${f.x},${f.y}`));
+      fruit = f;
+    }
+
+    function tick() {
+      dir = nextDir;
+      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+      // wall collision
+      if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) { die(); return; }
+      // self collision (exclude tail — it moves away this tick)
+      if (snake.slice(0, -1).some(s => s.x === head.x && s.y === head.y)) { die(); return; }
+
+      snake.unshift(head);
+
+      if (head.x === fruit.x && head.y === fruit.y) {
+        score++;
+        if (score > highScore) highScore = score;
+        spawnFruit();
+      } else {
+        snake.pop();
+      }
+
+      updateHud();
+      draw();
+    }
+
+    function die() {
+      running = false;
+      dead    = true;
+      clearInterval(loop);
+      showOverlay('GAME OVER', 'SPACE zum Neustart');
+      if (score > highScore) highScore = score;
+      updateHud();
+    }
+
+    function start() {
+      init();
+      running = true;
+      clearInterval(loop);
+      loop = setInterval(tick, 1000 / speed);
+      hideOverlay();
+      draw();
+    }
+
+    function updateHud() {
+      document.getElementById('scoreEl').textContent = score ?? 0;
+      document.getElementById('highEl').textContent  = highScore;
+      document.getElementById('lenEl').textContent   = snake ? snake.length : 0;
+    }
+
+    function showOverlay(msg, sub) {
+      document.getElementById('msg').textContent = msg;
+      document.getElementById('sub').textContent = sub;
+      document.getElementById('overlay').style.display = 'flex';
+    }
+
+    function hideOverlay() {
+      document.getElementById('overlay').style.display = 'none';
+    }
+
+    // --- drawing ---
+    function draw() {
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      drawGrid();
+      drawFruit();
+      drawSnake();
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = '#ffffff08';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= COLS; x++) {
+        ctx.beginPath(); ctx.moveTo(x*CELL, 0); ctx.lineTo(x*CELL, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y <= ROWS; y++) {
+        ctx.beginPath(); ctx.moveTo(0, y*CELL); ctx.lineTo(canvas.width, y*CELL); ctx.stroke();
+      }
+    }
+
+    function drawPixelRect(x, y, color, glow, alpha = 1) {
+      const px = x * CELL;
+      const py = y * CELL;
+      const rgb = hexToRgb(color);
+
+      if (glow) {
+        ctx.shadowColor = `rgba(${rgb},${alpha})`;
+        ctx.shadowBlur  = 12;
+      }
+
+      ctx.fillStyle = `rgba(${rgb},${alpha * 0.25})`;
+      ctx.fillRect(px+1, py+1, CELL-2, CELL-2);
+
+      ctx.fillStyle = `rgba(${rgb},${alpha})`;
+      ctx.fillRect(px+3, py+3, CELL-6, CELL-6);
+
+      ctx.shadowBlur = 0;
+    }
+
+    function drawSnake() {
+      snake.forEach((seg, i) => {
+        const alpha = 0.4 + 0.6 * (1 - i / snake.length);
+        const isHead = i === 0;
+        drawPixelRect(seg.x, seg.y, snakeHex, isHead, alpha);
+
+        if (isHead) {
+          const rgb = hexToRgb(snakeHex);
+          ctx.fillStyle = `rgba(${rgb},1)`;
+          // eyes based on direction
+          const ex = dir.x, ey = dir.y;
+          const cx = seg.x * CELL + CELL/2;
+          const cy = seg.y * CELL + CELL/2;
+          const eyeOffsets = ex !== 0
+            ? [{ x: ex*4, y: -3 }, { x: ex*4, y: 3 }]
+            : [{ x: -3, y: ey*4 }, { x: 3, y: ey*4 }];
+          eyeOffsets.forEach(o => {
+            ctx.fillRect(cx + o.x - 1, cy + o.y - 1, 3, 3);
+          });
+        }
+      });
+    }
+
+    function drawFruit() {
+      const rgb = hexToRgb(fruitHex);
+      const t   = Date.now() / 500;
+      const pulse = 0.7 + 0.3 * Math.sin(t);
+
+      ctx.shadowColor = `rgba(${rgb},${pulse})`;
+      ctx.shadowBlur  = 20 * pulse;
+
+      ctx.fillStyle = `rgba(${rgb},${pulse})`;
+      const px = fruit.x * CELL;
+      const py = fruit.y * CELL;
+      // pixel-art diamond shape
+      ctx.fillRect(px + CELL/2 - 2, py + 2,           4, 4);
+      ctx.fillRect(px + 2,          py + CELL/2 - 2,  4, 4);
+      ctx.fillRect(px + CELL/2 - 2, py + CELL - 6,    4, 4);
+      ctx.fillRect(px + CELL - 6,   py + CELL/2 - 2,  4, 4);
+      ctx.fillRect(px + CELL/2 - 2, py + CELL/2 - 2,  4, 4);
+
+      ctx.shadowBlur = 0;
+    }
+
+    // --- input ---
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space') {
+        if (!running) start();
+        return;
+      }
+      const map = {
+        ArrowUp:    { x: 0, y: -1 }, KeyW: { x: 0, y: -1 },
+        ArrowDown:  { x: 0, y:  1 }, KeyS: { x: 0, y:  1 },
+        ArrowLeft:  { x:-1, y:  0 }, KeyA: { x:-1, y:  0 },
+        ArrowRight: { x: 1, y:  0 }, KeyD: { x: 1, y:  0 },
+      };
+      const d = map[e.code];
+      if (!d) return;
+      // prevent 180° reversal
+      if (d.x === -dir.x && d.y === -dir.y) return;
+      nextDir = d;
+      e.preventDefault();
+    });
+
+    // initial draw
+    init();
+    draw();
+
+    // pulse animation for fruit before game starts
+    function idleLoop() { if (!running) { draw(); } requestAnimationFrame(idleLoop); }
+    idleLoop();
+  </script>
+</body>
+</html>
